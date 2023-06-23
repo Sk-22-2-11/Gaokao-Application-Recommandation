@@ -1,0 +1,34 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net6.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <ApplicationIcon>ico\favicon.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="apple-touch-icon.png" />
+    <None Remove="bc.jpg" />
+    <None Remove="favicon.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="ico\favicon.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="EPPlus" Version="6.2.6" />
+    <PackageReference Include="ExcelDataReader" Version="3.6.0" />
+    <PackageReference Include="ExcelDataReader.DataSet" Version="3.6.0" />
+    <PackageReference Include="MaterialDesignInXamlToolkitAddOns" Version="0.0.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="apple-touch-icon.png" />
+    <Resource Include="bc.jpg" />
+    <Resource Include="favicon.ico" />
+  </ItemGroup>
+
+</Project>
