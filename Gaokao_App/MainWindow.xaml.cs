@@ -1,100 +1,129 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
+﻿using Azure.Storage.Blobs;
+using System;
 using System.Data;
-using System.Linq;
+using System.IO;
 using System.Text;
-using System.Threading.Tasks;
-using System.Timers;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
 using ExcelDataReader;
 using OfficeOpenXml;
 
-
 namespace Gaokao_App
 {
-    /// <summary>
-    /// Interaction logic for MainWindow.xaml
-    /// </summary>
     public partial class MainWindow : Window
     {
-        private Timer timer;
         private DataTable data_wuli;
         private DataTable data_lishi;
+        private string blobConnectionString = "blob_connection_string";
+        private string containerName = "container_name";
 
         public MainWindow()
         {
             ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
-            // 注册 CodePagesEncodingProvider
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-
             InitializeComponent();
             this.Title = "清北之路志愿推荐系统";
-            // 加载第一个Excel文件
-            string excelFilePath1 = "2023_pool_Wuli.xlsx";
+
+            // Load the Excel files from Azure Blob Storage
+            string excelFilePath1 = DownloadBlobFile("2023_pool_Wuli.xlsx");
+            string excelFilePath2 = DownloadBlobFile("2023_pool_Lishi.xlsx");
+
             data_wuli = LoadExcelFile(excelFilePath1);
-
-            // 加载第二个Excel文件
-            string excelFilePath2 = "2023_pool_Lishi.xlsx";
             data_lishi = LoadExcelFile(excelFilePath2);
+        }
 
-            // 调用LoadExcelFile方法来加载Excel文件
-            DataTable LoadExcelFile(string filePath)
+        private string DownloadBlobFile(string blobName)
+        {
+            BlobServiceClient blobServiceClient = new BlobServiceClient(blobConnectionString);
+            BlobContainerClient containerClient = blobServiceClient.GetBlobContainerClient(containerName);
+            BlobClient blobClient = containerClient.GetBlobClient(blobName);
+
+            string localPath = Path.Combine(Path.GetTempPath(), blobName);
+            blobClient.DownloadTo(localPath);
+
+            return localPath;
+        }
+
+        private DataTable LoadExcelFile(string filePath)
+        {
+            using (var stream = File.Open(filePath, FileMode.Open, FileAccess.Read))
             {
-                using (var stream = File.Open(filePath, FileMode.Open, FileAccess.Read))
+                using (var reader = ExcelReaderFactory.CreateReader(stream, new ExcelReaderConfiguration()
                 {
-                    using (var reader = ExcelReaderFactory.CreateReader(stream, new ExcelReaderConfiguration()
+                    FallbackEncoding = Encoding.GetEncoding("GB2312")
+                }))
+                {
+                    var result = reader.AsDataSet(new ExcelDataSetConfiguration
                     {
-                        FallbackEncoding = Encoding.GetEncoding("GB2312") // 使用指定编码（例如 1252）进行读取
-                    }))
-                    {
-                        var result = reader.AsDataSet(new ExcelDataSetConfiguration
+                        ConfigureDataTable = (_) => new ExcelDataTableConfiguration
                         {
-                            ConfigureDataTable = (_) => new ExcelDataTableConfiguration
-                            {
-                                UseHeaderRow = true
-                            }
-                        });
+                            UseHeaderRow = true
+                        }
+                    });
 
-                        return result.Tables[0];
-                    }
+                    return result.Tables[0];
                 }
             }
         }
 
+        private static readonly HttpClient client = new HttpClient();
+
+        private async Task<string> CallAzureMLApiAsync(string apiUrl, string apiKey, string requestBody)
+        {
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+
+            var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+            var response = await client.PostAsync(apiUrl, content);
+
+            return await response.Content.ReadAsStringAsync();
+        }
+
+        // Example usage of the Azure ML API call
+        private async void BtnAnalyze_Click(object sender, RoutedEventArgs e)
+        {
+            string apiUrl = "your_azure_ml_api_url";
+            string apiKey = "your_api_key";
+            string requestBody = "{ \"data\": [ /* your input data */ ] }";
+
+            string result = await CallAzureMLApiAsync(apiUrl, apiKey, requestBody);
+            MessageBox.Show(result);
+        }
+
+        private void GenerateHtmlReport(DataTable dataTable, string fileName)
+        {
+            string html = "<html><head><title>Report</title></head><body>";
+            html += "<table border='1'><tr>";
+
+            // Add header row
+            foreach (DataColumn column in dataTable.Columns)
+            {
+                html += "<th>" + column.ColumnName + "</th>";
+            }
+            html += "</tr>";
+
+            // Add data rows
+            foreach (DataRow row in dataTable.Rows)
+            {
+                html += "<tr>";
+                foreach (var item in row.ItemArray)
+                {
+                    html += "<td>" + item.ToString() + "</td>";
+                }
+                html += "</tr>";
+            }
+
+            html += "</table></body></html>";
+
+            File.WriteAllText(fileName, html);
+        }
+
         private void BtnConfirm_Click(object sender, RoutedEventArgs e)
         {
-            string name = txtName.Text;
-            string subject = cmbSubject.Text;
-            int rank = int.Parse(txtRank.Text);
-            int rankMax = int.Parse(txtRankMax.Text);
-            int rankMin = int.Parse(txtRankMin.Text);
-
-            DataTable filteredData;
-            if (subject == "理科")
-            {
-                filteredData = FilterData(data_wuli, rankMin, rankMax);
-            }
-            else
-            {
-                filteredData = FilterData(data_lishi, rankMin, rankMax);
-            }
-
-            // 生成新的 Excel 表格
-            // 生成文件的目录
             string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-            string outputFilePath = Path.Combine(desktopPath, "志愿2023-" + subject + "-" + name + "-" + rank + ".xlsx");
+            string outputFilePath = Path.Combine(desktopPath, "report.html");
 
-            string excelFileName = $"志愿2023-{subject}-{name}-{rank}.xlsx";
-            GenerateExcel(filteredData, outputFilePath);
+            GenerateHtmlReport(data_wuli, outputFilePath);
+            MessageBox.Show("Report generated: " + outputFilePath);
 
             StartProgressBar();
         }
